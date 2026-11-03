@@ -3,6 +3,13 @@ import { reactive, ref } from 'vue'
 import AppCard from '@/components/ui/AppCard.vue'
 import AppButton from '@/components/ui/AppButton.vue'
 
+const props = defineProps({
+  submitting: {
+    type: Boolean,
+    default: false,
+  },
+})
+
 const emit = defineEmits(['submit', 'cancel'])
 
 // STATE FORMULIR CREATE EVENT
@@ -16,11 +23,20 @@ const form = reactive({
   desc: '',
 })
 
+// STATE ERROR SETIAP KOLOM (FIELD-LEVEL ERROR STATE)
+const errors = reactive({
+  title: '',
+  date: '',
+  loc: '',
+  quota: '',
+  desc: '',
+})
+
 const errorMessage = ref('')
 const successMessage = ref('')
 
 // Format helper to convert YYYY-MM-DDTHH:mm into "Nov 25, 2026 • 10:00 AM"
-const formatDate = (dt) => {
+const formatEventDate = (dt) => {
   if (!dt) return ''
   const dateObj = new Date(dt)
   if (isNaN(dateObj.getTime())) return dt
@@ -37,67 +53,118 @@ const formatDate = (dt) => {
   return `${datePart} • ${timePart}`
 }
 
-// HANDLER SUBMIT FORM CREATE EVENT
+// VALIDASI PER KOLOM MASUKAN
+const validateField = (field) => {
+  switch (field) {
+    case 'title':
+      if (!form.title.trim()) {
+        errors.title = 'Event title is required.'
+      } else if (form.title.trim().length < 3) {
+        errors.title = 'Event title must be at least 3 characters.'
+      } else {
+        errors.title = ''
+      }
+      break
+
+    case 'date':
+      if (!form.date) {
+        errors.date = 'Event date and time is required.'
+      } else {
+        errors.date = ''
+      }
+      break
+
+    case 'loc':
+      if (!form.loc.trim()) {
+        errors.loc = 'Event location is required.'
+      } else {
+        errors.loc = ''
+      }
+      break
+
+    case 'quota':
+      if (!form.quota || Number(form.quota) < 1) {
+        errors.quota = 'Quota must be at least 1 attendee.'
+      } else {
+        errors.quota = ''
+      }
+      break
+
+    case 'desc':
+      if (!form.desc.trim()) {
+        errors.desc = 'Event description is required.'
+      } else if (form.desc.trim().length < 10) {
+        errors.desc = 'Please write at least 10 characters for the description.'
+      } else {
+        errors.desc = ''
+      }
+      break
+  }
+}
+
+// VALIDASI SELURUH FORMULIR SEBELUM SUBMIT
+const validateAll = () => {
+  validateField('title')
+  validateField('date')
+  validateField('loc')
+  validateField('quota')
+  validateField('desc')
+
+  return !errors.title && !errors.date && !errors.loc && !errors.quota && !errors.desc
+}
+
+// HANDLER SUBMIT FORM CREATE EVENT KE REST API
 const handleSubmitEvent = () => {
-  // Validate Empty Input
-  if (!form.title.trim() || !form.date || !form.loc.trim() || !form.desc.trim()) {
-    errorMessage.value = 'Please fill in all required fields before publishing the event!'
+  const isValid = validateAll()
+
+  if (!isValid) {
+    errorMessage.value = 'Please correct the highlighted fields below before publishing the event.'
     successMessage.value = ''
     return
   }
 
+  errorMessage.value = ''
+
   emit('submit', {
     title: form.title,
     cat: form.cat,
-    date: formatDate(form.date),
+    date: formatEventDate(form.date),
     loc: form.loc,
     quota: form.quota,
     price: form.price,
     desc: form.desc,
   })
-
-  // Reset Form
-  form.title = ''
-  form.date = ''
-  form.loc = ''
-  form.quota = 100
-  form.price = 'Free'
-  form.desc = ''
-  errorMessage.value = ''
-  successMessage.value = 'Event published successfully and is now live!'
-
-  // Clear success notification after 1 second
-  setTimeout(() => {
-    successMessage.value = ''
-  }, 1000)
 }
 </script>
 
 <template>
-  <AppCard class="form-card">
-    <h3>Create New Event Form</h3>
-    <p class="form-subtitle">
-      Information entered here will be instantly published to the Gatherly public catalog.
-    </p>
+  <AppCard class="create-event-card">
+    <div class="form-header">
+      <h3>Create New Event</h3>
+      <p class="subtitle">Fill in the details to publish a new event to the catalog.</p>
+    </div>
 
-    <div v-if="errorMessage" class="alert-box alert-error">⚠️ {{ errorMessage }}</div>
-    <div v-if="successMessage" class="alert-box alert-success">🎉 {{ successMessage }}</div>
+    <!-- ERROR BANNER -->
+    <div v-if="errorMessage" class="error-banner">⚠️ {{ errorMessage }}</div>
 
-    <form @submit.prevent="handleSubmitEvent" class="event-form">
+    <form @submit.prevent="handleSubmitEvent" class="create-form">
       <div class="form-group">
-        <label>Event Title *</label>
+        <label for="title">Event Title *</label>
         <input
+          id="title"
           v-model="form.title"
           type="text"
           placeholder="e.g. Modern UI/UX Masterclass"
-          class="form-input"
+          :class="{ 'has-error': errors.title }"
+          @blur="validateField('title')"
         />
+        <span v-if="errors.title" class="field-error">{{ errors.title }}</span>
       </div>
 
       <div class="form-row">
         <div class="form-group">
-          <label>Event Category *</label>
-          <select v-model="form.cat" class="form-input">
+          <label for="cat">Event Category *</label>
+          <select id="cat" v-model="form.cat">
             <option value="Workshop">Workshop</option>
             <option value="Meetup">Meetup</option>
             <option value="Competition">Competition</option>
@@ -107,157 +174,168 @@ const handleSubmitEvent = () => {
         </div>
 
         <div class="form-group">
-          <label>Date & Time *</label>
-          <input v-model="form.date" type="datetime-local" class="form-input" />
+          <label for="date">Date & Time *</label>
+          <input
+            id="date"
+            v-model="form.date"
+            type="datetime-local"
+            :class="{ 'has-error': errors.date }"
+            @blur="validateField('date')"
+          />
+          <span v-if="errors.date" class="field-error">{{ errors.date }}</span>
         </div>
       </div>
 
       <div class="form-row">
         <div class="form-group">
-          <label>Event Location *</label>
+          <label for="loc">Event Location *</label>
           <input
+            id="loc"
             v-model="form.loc"
             type="text"
             placeholder="e.g. Innovation Center, Jakarta"
-            class="form-input"
+            :class="{ 'has-error': errors.loc }"
+            @blur="validateField('loc')"
           />
+          <span v-if="errors.loc" class="field-error">{{ errors.loc }}</span>
         </div>
 
         <div class="form-group">
-          <label>Attendee Quota</label>
+          <label for="quota">Attendee Quota *</label>
           <input
-            v-model.number="form.quota"
+            id="quota"
+            v-model="form.quota"
             type="number"
-            min="10"
+            min="1"
             placeholder="100"
-            class="form-input"
+            :class="{ 'has-error': errors.quota }"
+            @blur="validateField('quota')"
           />
+          <span v-if="errors.quota" class="field-error">{{ errors.quota }}</span>
         </div>
       </div>
 
       <div class="form-group">
-        <label>Event Description *</label>
+        <label for="desc">Event Description *</label>
         <textarea
+          id="desc"
           v-model="form.desc"
           rows="4"
           placeholder="Describe the agenda, speakers, and key takeaways..."
-          class="form-input"
+          :class="{ 'has-error': errors.desc }"
+          @blur="validateField('desc')"
         ></textarea>
+        <span v-if="errors.desc" class="field-error">{{ errors.desc }}</span>
       </div>
 
       <div class="form-actions">
-        <button type="button" class="btn-secondary-action" @click="emit('cancel')">Cancel</button>
-        <AppButton variant="primary" type="submit"> 🚀 Publish Event Now </AppButton>
+        <AppButton variant="secondary" type="button" @click="emit('cancel')"> Cancel </AppButton>
+        <AppButton variant="primary" type="submit" :loading="submitting">
+          🚀 Publish Event Now</AppButton
+        >
       </div>
     </form>
   </AppCard>
 </template>
 
 <style scoped>
-.form-card {
+.create-event-card {
   padding: var(--space-8);
   max-width: 800px;
-  margin: 0 auto var(--space-12) auto;
+  margin: 0 auto;
 }
 
-.form-card h3 {
-  font-size: 1.5rem;
+.form-header {
+  margin-bottom: var(--space-6);
+}
+
+.form-header h3 {
+  font-size: 1.6rem;
+  color: var(--text-main);
   margin-bottom: var(--space-1);
 }
 
-.form-subtitle {
+.subtitle {
   color: var(--text-muted);
-  margin-bottom: var(--space-6);
+  font-size: 0.95rem;
 }
 
-.alert-box {
+.error-banner {
+  background: #fee2e2;
+  color: #dc2626;
   padding: var(--space-3) var(--space-4);
   border-radius: 8px;
-  font-size: 0.95rem;
-  font-weight: 500;
+  border: 1px solid #fca5a5;
   margin-bottom: var(--space-6);
+  font-size: 0.9rem;
+  font-weight: 500;
 }
 
-.alert-error {
-  background: #ffe3e3;
-  color: #c92a2a;
-  border: 1px solid #ffa8a8;
-}
-
-.alert-success {
-  background: #d3f9d8;
-  color: #2b8a3e;
-  border: 1px solid #b2f2bb;
-}
-
-.event-form {
+.create-form {
   display: flex;
   flex-direction: column;
-  gap: 22px;
+  gap: var(--space-5);
 }
 
 .form-row {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 20px;
+  gap: var(--space-4);
 }
 
 .form-group {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .form-group label {
-  font-size: 0.95rem;
   font-weight: 600;
+  font-size: 0.9rem;
   color: var(--text-main);
 }
 
-.form-input {
-  padding: 12px 14px;
-  border: 1px solid var(--border-color);
+.form-group input,
+.form-group select,
+.form-group textarea {
+  padding: 10px 14px;
   border-radius: 8px;
+  border: 1px solid var(--border-color);
   font-size: 0.95rem;
+  font-family: inherit;
   outline: none;
   transition:
     border-color 0.2s,
     box-shadow 0.2s;
-  background: white;
-  box-sizing: border-box;
-  width: 100%;
 }
 
-.form-input:focus {
+.form-group input:focus,
+.form-group select:focus,
+.form-group textarea:focus {
   border-color: var(--primary);
   box-shadow: 0 0 0 3px rgba(102, 68, 255, 0.15);
+}
+
+.form-group input.has-error,
+.form-group select.has-error,
+.form-group textarea.has-error {
+  border-color: #dc2626;
+}
+
+.field-error {
+  color: #dc2626;
+  font-size: 0.8rem;
+  font-weight: 500;
 }
 
 .form-actions {
   display: flex;
   justify-content: flex-end;
-  gap: var(--space-4);
-  margin-top: 12px;
-  padding-top: 20px;
-  border-top: 1px solid var(--border-color);
+  gap: var(--space-3);
+  margin-top: var(--space-4);
 }
 
-.btn-secondary-action {
-  background: var(--bg-light);
-  border: 1px solid var(--border-color);
-  padding: var(--space-3) var(--space-6);
-  border-radius: 12px;
-  font-weight: 600;
-  cursor: pointer;
-  color: var(--text-muted);
-}
-
-.btn-secondary-action:hover {
-  background: #e9ecef;
-  color: var(--text-main);
-}
-
-@media (max-width: 768px) {
+@media (max-width: 640px) {
   .form-row {
     grid-template-columns: 1fr;
   }
